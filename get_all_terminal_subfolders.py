@@ -1,6 +1,5 @@
 
 import os
-top_folder = '/shares/onfnas01/Research/Bradshaw/Lymphoma_UW_Retrospective/Data/dicom_bone_marrow_cases_Firas_contours/benign_bone_lesions'
 
 def all_subdirs_search(top_folder):
     subfolders = [f.path for f in os.scandir(top_folder) if f.is_dir()]
