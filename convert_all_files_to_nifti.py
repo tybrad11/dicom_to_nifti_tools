@@ -84,10 +84,13 @@ def convert_pet_nifti_to_suv_nifti(nifti_read_filename, test_dicom, nifti_save_f
         new_data = new_data * suv_factor
         suv_img = nib.Nifti1Image(new_data, orig.affine, orig.header)
         nib.save(suv_img, nifti_save_filename)
+        return 1
+    else:
+        return 0
 
-    return 0 or 1
 
 def find_path_to_dicom_image_that_corresponds_with_rtsrtuct(dir_i, dicom_study_date, modality_of_interest, subdirs):
+    #just looks one folder up to see if any directories contain DICOM images of the modality of interest. Takes first one
     one_folder_up = os.path.dirname(dir_i)
     patient_folders = [s for s in subdirs if one_folder_up in s]
     corresponding_dicom = ''
