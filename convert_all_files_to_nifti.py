@@ -3,7 +3,14 @@ import os
 import pydicom
 import dicom2nifti
 from platipy.dicom.io import rtstruct_to_nifti
-import get_all_terminal_subfolders
+from get_all_terminal_subfolders import get_all_terminal_subfolders
+import nibabel as nib
+from datetime import datetime
+import numpy as np
+
+#test case for debugging:
+# test_dicom = pydicom.dcmread('/shares/onfnas01/Research/Bradshaw/Lymphoma_UW_Retrospective/Data/dicom_bone_marrow_cases_Firas_contours/malignant_bone_lesions/PETLYMPH_4650/20191003/PT_WB_MAC/1.2.826.0.1.3680043.2.629.20160908.99532175269322799431358060892.dcm')
+#nifti_read_filename = '/shares/onfnas01/Research/Bradshaw/Lymphoma_UW_Retrospective/Data/nifti_bone_marrow_cases_Firas_contours/malignant/petlymph_4650_petlymph_4650/20191003_PT_WB_MAC.nii.gz'
 
 def isdicom(file_path):
     #borrowed from pydicom filereader.py
@@ -14,6 +21,71 @@ def isdicom(file_path):
             return False
         else:
             return True
+
+
+def get_suv_conversion_factor(test_dicom):
+
+    dicom_corrections = test_dicom['00280051'].value
+    if 'ATTN' not in dicom_corrections and 'attn' not in dicom_corrections:
+        print('Not attenuation corrected -- SUV factor set to 1')
+        return 1
+
+    try:
+        dicom_weight = test_dicom['00101030'].value
+        dicom_manufacturer = test_dicom['00080070'].value.lower()
+
+        #scantime info
+        if dicom_manufacturer[0:2] == 'ge' and '0009100D' in test_dicom:
+            dicom_scan_datetime = test_dicom['0009100D'].value[0:14]  #need to check!
+        else:
+            dicom_scan_datetime = test_dicom['00080021'].value +  test_dicom['00080031'].value
+            dicom_scan_datetime = dicom_scan_datetime[0:14]
+
+        #radiopharmaceutical info
+        radiopharm_object = test_dicom['00540016'][0]
+        if '00181074' in radiopharm_object and '00181075' in radiopharm_object:
+            dicom_half_life = radiopharm_object['00181075'].value
+            dicom_dose = radiopharm_object['00181074'].value
+
+            if '00181078' in radiopharm_object:
+                if radiopharm_object['00181078'].value != None:
+                    dicom_inj_datetime = radiopharm_object['00181078'].value
+                else:
+                    dicom_inj_datetime = dicom_scan_datetime[0:8] + radiopharm_object['00181072'].value
+            else:
+                dicom_inj_datetime = dicom_scan_datetime[0:8] + radiopharm_object['00181072'].value
+        # sometimes tracer info is wiped, and if GE, can be found in private tags
+        else:
+            print('No dose information -- SUV factor set to 1')
+            return 1
+
+    except Exception:
+        print('Problem reading SUV info -- SUV factor set to 1')
+        return 1
+
+    #date difference
+    scan_datetime = datetime.strptime(dicom_scan_datetime, '%Y%m%d%H%M%S')
+    if not 'philips' in dicom_manufacturer.lower():
+        dicom_inj_datetime = dicom_inj_datetime[0:14]
+    inj_datetime = datetime.strptime(dicom_inj_datetime, '%Y%m%d%H%M%S')
+    diff_seconds = (scan_datetime - inj_datetime).total_seconds()
+
+    #SUV factor
+    dose_corrected = dicom_dose * np.exp(-(np.log(2)*diff_seconds)/dicom_half_life)
+    suv_factor = 1/((dose_corrected/dicom_weight)*0.001)
+    return suv_factor
+
+def convert_pet_nifti_to_suv_nifti(nifti_read_filename, test_dicom, nifti_save_filename):
+    suv_factor = get_suv_conversion_factor(test_dicom)
+    if suv_factor != 1:
+        orig = nib.load(nifti_read_filename)
+        data = orig.get_fdata()
+        new_data = data.copy()
+        new_data = new_data * suv_factor
+        suv_img = nib.Nifti1Image(new_data, orig.affine, orig.header)
+        nib.save(suv_img, nifti_save_filename)
+
+    return 0 or 1
 
 def find_path_to_dicom_image_that_corresponds_with_rtsrtuct(dir_i, dicom_study_date, modality_of_interest, subdirs):
     one_folder_up = os.path.dirname(dir_i)
@@ -32,6 +104,7 @@ def find_path_to_dicom_image_that_corresponds_with_rtsrtuct(dir_i, dicom_study_d
 
 
 def convert_all_files_to_nifti(top_dicom_folder, top_nifti_folder, modality_of_interest):
+    #modality of interest is the modality that will be the reference size for the RTSTRUCT contours
     subdirs = get_all_terminal_subfolders(top_dicom_folder)
 
     for dir_i in subdirs:
@@ -59,9 +132,12 @@ def convert_all_files_to_nifti(top_dicom_folder, top_nifti_folder, modality_of_i
 
         if not os.path.exists(subject_save_folder):
             os.makedirs(subject_save_folder)
-
-        if dicom_modality in ['PT', 'CT', 'MR', 'NM']:
+        if dicom_modality in ['CT', 'MR', 'NM']:
             dicom2nifti.dicom_series_to_nifti(dir_i, os.path.join(subject_save_folder, scan_save_name + '.nii.gz'), reorient_nifti=False)
+        elif dicom_modality == 'PT':
+            dicom2nifti.dicom_series_to_nifti(dir_i, os.path.join(subject_save_folder, scan_save_name + '.nii.gz'), reorient_nifti=False)
+            convert_pet_nifti_to_suv_nifti(os.path.join(subject_save_folder, scan_save_name + '.nii.gz'), test_dicom,
+                                           os.path.join(subject_save_folder, scan_save_name + '_SUV.nii.gz'))
 
         elif dicom_modality == 'RTSTRUCT':
             #might be multiple rtstructs in folder
