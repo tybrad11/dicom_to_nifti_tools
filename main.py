@@ -4,14 +4,16 @@
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+import convert_all_files_to_nifti
+import os
+
+# dicom_path = os.path.join(r"\\onfnas01.uwhis.hosp.wisc.edu\radiology\Research\Bradshaw\Lymphoma_UW_Retrospective\Data\uw_analyzed", 'dicom' )
+dicom_path = os.path.join(r"H:\Data\tmp", 'uw_analyzed' )
+
+# nifti_path = os.path.join(r"\\onfnas01.uwhis.hosp.wisc.edu\radiology\Research\Bradshaw\Lymphoma_UW_Retrospective\Data\uw_analyzed", 'nifti')
+nifti_path = os.path.join(r"H:\Data\tmp", 'uw_analyzed_nifti')
 
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
+convert_all_files_to_nifti.convert_all_files_to_nifti(dicom_path, nifti_path, 'PT')
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
 
