@@ -8,7 +8,7 @@ import numpy as np
 rtstruct_folder = os.path.join(r"H:\Data\tmp\uw_analyzed_nifti\petlymph_4542_petlymph_4542\20150920_RTSTRUCT_ADJ_MShin")
 save_folder = os.path.join(r"H:\Data\tmp\uw_analyzed_nifti\petlymph_4542_petlymph_4542")
 ignore_strings = ['Struct_XD', 'Reference', 'Burden']
-group_strings = ['marrow', 'osseous', 'liver', 'extra-nodal', 'spleen']
+group_strings = ['marrow', 'osseous', 'liver', 'extra-nodal', 'spleen', 'eq', 'lymph-nodes']
 
 def combine_rois_into_one(rtstruct_folder, save_folder, ignore_strings = None, create_mip=True):
     """
@@ -26,10 +26,6 @@ def combine_rois_into_one(rtstruct_folder, save_folder, ignore_strings = None, c
         #ignore if includes ignore_strings
         ignore_rt = False
         for ignore in ignore_strings:
-            if ignore.lower() in os.path.split(rt_i)[1].lower():
-                ignore_rt = True
-
-        for groups in grouping_strings
             if ignore.lower() in os.path.split(rt_i)[1].lower():
                 ignore_rt = True
 
@@ -72,12 +68,12 @@ def combine_rois_into_groups(rtstruct_folder, save_folder, group_strings, ignore
     #initialize array of groups, one for each group plus a "regular"
     #read in first dataset to get header info
     rt_initial = nib.load(rt_niftis[0])
-    dims = rt_initial.header.get_data_shape() + (len(group_strings)+1,)
+    dims = rt_initial.header.get_data_shape() + (len(group_strings),)
 
     roi_groups = np.zeros(dims)
 
     for rt_i in rt_niftis:
-        group_ind = len(group_strings)   #default is the nodal group
+        group_ind = len(group_strings) - 1   #default is the nodal group
         #ignore if includes ignore_strings
         ignore_rt = False
         for ignore in ignore_strings:
@@ -85,8 +81,17 @@ def combine_rois_into_groups(rtstruct_folder, save_folder, group_strings, ignore
                 ignore_rt = True
 
         for i, groups in enumerate(group_strings):
-            if groups.lower() in os.path.split(rt_i)[1].lower():
-                group_ind = i
+            name_of_file = os.path.split(rt_i)[1].lower()
+            if groups.lower() in name_of_file:
+                if groups.lower() == 'eq':
+                    if 'neq' in name_of_file or 'non-eq' in name_of_file:
+                        #hmmm...does non-eq ever come before eq???? I'll ignore for now
+                        group_ind = group_ind   #don't change
+                    else:
+                        #regardless of other label, add to equivocal group
+                        group_ind = group_strings.index('eq')
+                else:
+                    group_ind = i
 
         #read image
         if not ignore_rt:
@@ -97,12 +102,14 @@ def combine_rois_into_groups(rtstruct_folder, save_folder, group_strings, ignore
 
     #collapse values greater than 1
     roi_groups[roi_groups > 1] = 1
+    #go through each group, if it has data (value >1) create new nifti
     for i, groups in enumerate(group_strings):
-        new_nifti_data = nib.Nifti1Image(roi_groups[:,:,:,i], rt_combined_affine, rt_combined_header)
-        nib.save(new_nifti_data, os.path.join(save_folder, os.path.split(rtstruct_folder)[1] + '_combined_' + groups + '.nii.gz') )
+        if np.max(roi_groups[:,:,:,i]) > 0:
+            new_nifti_data = nib.Nifti1Image(roi_groups[:,:,:,i], rt_initial.affine, rt_initial.header)
+            nib.save(new_nifti_data, os.path.join(save_folder, os.path.split(rtstruct_folder)[1] + '_combined_' + groups + '.nii.gz') )
 
-        if create_mip:
-            mip = np.max(rt_combined_data, axis=1)
-            plt.imshow(mip)
-            plt.imsave( os.path.join(save_folder, os.path.split(rtstruct_folder)[1] + '_combined_MIP.png'), mip)
+            if create_mip:
+                mip = np.max(new_nifti_data.get_fdata(), axis=1)
+                plt.imshow(mip)
+                plt.imsave( os.path.join(save_folder, os.path.split(rtstruct_folder)[1] + '_combined_' + groups + '_MIP.png'), mip)
 
