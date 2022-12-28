@@ -1,4 +1,4 @@
-from convert_all_files_to_nifti import convert_all_files_to_nifti
+from convert_all_files_to_nifti import convert_all_files_to_nifti, convert_specific_rtstruct_to_nifti
 import os
 from get_all_terminal_subfolders import get_all_terminal_subfolders
 from nifti_roi_tools import combine_rois_into_one, combine_rois_into_groups
@@ -16,6 +16,7 @@ nifti_path = os.path.join(r"H:\Data\tmp", 'uw_analyzed_nifti')
 convert_all_files_to_nifti.convert_all_files_to_nifti(dicom_path, nifti_path, 'PT')
 
 
+convert_specific_rtstruct_to_nifti(dicom_path, nifti_path, 'scho', 'PT')
 
 #now create the combined ROI files
 
