@@ -7,6 +7,8 @@ from get_all_terminal_subfolders import get_all_terminal_subfolders
 import nibabel as nib
 from datetime import datetime
 import numpy as np
+import csv
+
 
 #test case for debugging:
 # test_dicom = pydicom.dcmread('/shares/onfnas01/Research/Bradshaw/Lymphoma_UW_Retrospective/Data/dicom_bone_marrow_cases_Firas_contours/malignant_bone_lesions/PETLYMPH_4650/20191003/PT_WB_MAC/1.2.826.0.1.3680043.2.629.20160908.99532175269322799431358060892.dcm')
@@ -203,7 +205,7 @@ def convert_specific_rtstruct_to_nifti(top_dicom_folder, top_nifti_folder, rtstr
         subject_save_folder = os.path.join(top_nifti_folder, subject_save_name)
         scan_save_name = dicom_series_date + '_' + dicom_modality + '_' + dicom_series_description.replace(' ', '_')
 
-        print(dir_i)
+
 
         if not os.path.exists(subject_save_folder):
             os.makedirs(subject_save_folder)
@@ -217,7 +219,8 @@ def convert_specific_rtstruct_to_nifti(top_dicom_folder, top_nifti_folder, rtstr
         #     convert_pet_nifti_to_suv_nifti(os.path.join(subject_save_folder, scan_save_name + '.nii.gz'), test_dicom,
         #                                    os.path.join(subject_save_folder, scan_save_name + '_SUV.nii.gz'))
 
-        elif dicom_modality == 'RTSTRUCT' and rtstruct_sting_identifier.lower() in dicom_series_description.lower():
+        if dicom_modality == 'RTSTRUCT' and rtstruct_sting_identifier.lower() in dicom_series_description.lower():
+            print(dir_i)
             # might be multiple rtstructs in folder
             for file_i in files:
                 if isdicom(os.path.join(dir_i, file_i)) == True:
@@ -249,5 +252,7 @@ def convert_specific_rtstruct_to_nifti(top_dicom_folder, top_nifti_folder, rtstr
                                                                output_dir=rtstruct_nifti_save_path)
                         except:
                             print("!!!!!!!!!!!XXXXXXX   Problem with {}    XXXXXX!!!!!!!!!!!!!! ".format(file_i))
-        else:
-            print('Modality is not standard modality!')
+
+
+
+
