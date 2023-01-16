@@ -5,14 +5,128 @@ import nibabel as nib
 from nibabel.processing import resample_from_to
 from matplotlib import pyplot as plt
 import numpy as np
+from scipy.ndimage import zoom, rotate
+
 
 # rtstruct_folder = os.path.join(r"H:\Data\tmp\uw_analyzed_nifti\petlymph_4546_petlymph_4546\20150611_RTSTRUCT_ADJ_MShin")
 # save_folder = os.path.join(r"H:\Data\tmp\uw_analyzed_nifti\petlymph_4546_petlymph_4546")
 # ignore_strings = ['Struct_XD', 'Reference', 'Burden']
 # group_strings = ['marrow', 'osseous', 'liver', 'extra-nodal', 'spleen', 'lymph-nodes']
 
-def resample_nifti_to_pixel_dims(nifti_path, voxel_dims)
 
+def resample_and_normalize_nifti(nifti_img_path, new_voxel_dims, new_nifti_path, modality, crazy_rotation = False):
+    #normalized to 0 mean, 1 std
+    #modality can be PT, CT, or SUV
+    #crazy rotation is to match the original deepmedic rotations that were used (crazy!)
+
+    #threshold for measuring avg/std
+    if modality == 'SUV':
+        threshold = 0.1
+    elif modality == 'PT':
+        threshold = 500
+    elif modality == 'CT':
+        threshold = -300
+    elif modality == 'RT':
+        threshold = ''
+
+    # Load the NIFTI image
+    nii = nib.load(nifti_img_path)
+
+    # Get the current voxel dimensions
+    old_dims = nii.header.get_zooms()
+    old_shape = nii.header.get_data_shape()
+
+    # Calculate the scaling factors for the new voxel dimensions
+    scaling_factors = (old_dims[0]/new_voxel_dims[0], old_dims[1]/new_voxel_dims[1], old_dims[2]/new_voxel_dims[2])
+
+    #normalize image
+    new_image = nii.get_fdata().copy()
+    if threshold != '':
+        avg = np.mean(new_image[new_image > threshold])
+        std = np.std(new_image[new_image > threshold])
+        new_image = (new_image - avg)/std
+
+
+    # Resample the image
+    if modality == 'RT':
+        resampled_image = zoom(new_image, scaling_factors, order=0) #order 0 = NN ...i think
+    else:
+        resampled_image = zoom(new_image, scaling_factors, order=1) #order 1 = linear ... i think
+    new_shape = resampled_image.shape
+
+
+
+    # Create a new NIFTI image with the resampled data and the updated voxel dimensions
+    # !! need to fix this affine -- DOESN'T CONSIDER DIRECTION, AND assumes the image is centered on 0, which isn;t
+    # always the case!!
+    new_start_x = new_voxel_dims[0]*new_shape[0]/2
+    new_start_y = new_voxel_dims[1]*new_shape[1]/2
+    #z isn't usually centered at 0
+    old_z_start = nii.affine[2,3]
+    if nii.affine[2,2] > 0:  #defines direction which to add extra
+        new_start_z = old_z_start - ( new_voxel_dims[2]*new_shape[2] - old_dims[2]*old_shape[2] )/2
+    else:
+        new_start_z = old_z_start + ( new_voxel_dims[2]*new_shape[2] - old_dims[2]*old_shape[2] )/2
+
+    #new affine
+    nii_affine_new = nii.affine.copy()
+    nii_affine_new[0,0] = np.sign(nii.affine[0,0]) * new_voxel_dims[0]
+    nii_affine_new[1,1] = np.sign(nii.affine[1,1]) * new_voxel_dims[1]
+    nii_affine_new[2,2] = np.sign(nii.affine[2,2]) * new_voxel_dims[2]
+    nii_affine_new[:3,3] = [new_start_x, new_start_y, new_start_z]
+    #new header
+    nii_header_new = nii.header.copy()
+    nii_header_new['pixdim'][1:4] = new_voxel_dims
+
+    if crazy_rotation:
+        resampled_image = rotate(resampled_image, 90)
+
+    resampled_nii = nib.Nifti1Image(resampled_image, nii_affine_new, nii_header_new)
+
+    # Save the resampled image
+    nib.save(resampled_nii, new_nifti_path)
+
+
+def resample_nifti_to_pixel_dims(nifti_path, new_voxel_dims, new_nifti_path):
+    # Load the NIFTI image
+    nii = nib.load(nifti_path)
+
+    # Get the current voxel dimensions
+    old_dims = nii.header.get_zooms()
+    old_shape = nii.header.get_data_shape()
+
+    # Calculate the scaling factors for the new voxel dimensions
+    scaling_factors = (old_dims[0]/new_voxel_dims[0], old_dims[1]/new_voxel_dims[1], old_dims[2]/new_voxel_dims[2])
+
+    # Resample the image
+    resampled_image = zoom(nii.get_fdata(), scaling_factors, order=1)
+    new_shape = resampled_image.shape
+
+    # Create a new NIFTI image with the resampled data and the updated voxel dimensions
+    # !! need to fix this affine -- DOESN'T CONSIDER DIRECTION, AND assumes the image is centered on 0, which isn;t
+    # always the case!!
+    new_start_x = new_voxel_dims[0]*new_shape[0]/2
+    new_start_y = new_voxel_dims[1]*new_shape[1]/2
+    #z isn't usually centered at 0
+    old_z_start = nii.affine[2,3]
+    if nii.affine[2,2] > 0:  #defines direction which to add extra
+        new_start_z = old_z_start - ( new_voxel_dims[2]*new_shape[2] - old_dims[2]*old_shape[2] )/2
+    else:
+        new_start_z = old_z_start + ( new_voxel_dims[2]*new_shape[2] - old_dims[2]*old_shape[2] )/2
+
+    #new affine
+    nii_affine_new = nii.affine.copy()
+    nii_affine_new[0,0] = np.sign(nii.affine[0,0]) * new_voxel_dims[0]
+    nii_affine_new[1,1] = np.sign(nii.affine[1,1]) * new_voxel_dims[1]
+    nii_affine_new[2,2] = np.sign(nii.affine[2,2]) * new_voxel_dims[2]
+    nii_affine_new[:3,3] = [new_start_x, new_start_y, new_start_z]
+    #new header
+    nii_header_new = nii.header.copy()
+    nii_header_new['pixdim'][1:4] = new_voxel_dims
+    resampled_nii = nib.Nifti1Image(resampled_image, nii_affine_new, nii_header_new)
+
+    # Save the resampled image
+    nib.save(resampled_nii, new_nifti_path)
 
 
 def resample_ct_nii_to_match_pet_nii(ct_path, pt_path, ct_save_path):
@@ -115,7 +229,7 @@ def combine_rois_into_one(rtstruct_folder, save_folder, patient, ignore_strings 
 def combine_rois_into_groups(rtstruct_folder, save_folder, patient, group_strings, ignore_strings = None, create_mip=True):
     """
     Combine all rois in the separate nifti files into a single mask where each number represents a different class of
-    lesion (e.g., 0=marrow, 1=osseous, ...) For equivocal (EQ) lesions, these are assigned a number + total number of
+    lesion (e.g., 1=marrow, 2=osseous, ...) For equivocal (EQ) lesions, these are assigned a number + total number of
     groups. E.g., if liver = 2, and number of groups = 7, liver EQ is 2 + 7. Also ignore files that contain strings in
     ignore_strings.
 
@@ -150,7 +264,7 @@ def combine_rois_into_groups(rtstruct_folder, save_folder, patient, group_string
         #see what group it belongs to based on filename
         for i, groups in enumerate(group_strings):
             if groups.lower() in name_of_file:
-                group_ind = i
+                group_ind = i+1  #plus 1, or else first one will be zero!!!
 
         #see if it's equivocal, if it is add as it's own category (each group has it owns eq category)
         is_equivocal = determine_if_rt_is_equivocal(name_of_file)

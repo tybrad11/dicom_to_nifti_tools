@@ -84,6 +84,8 @@ def convert_pet_nifti_to_suv_nifti(nifti_read_filename, test_dicom, nifti_save_f
         data = orig.get_fdata()
         new_data = data.copy()
         new_data = new_data * suv_factor
+        if np.max(new_data) < 1:
+            print('*** PET image values seem low for {}. Check SUV conversion'.format(nifti_save_filename))
         suv_img = nib.Nifti1Image(new_data, orig.affine, orig.header)
         nib.save(suv_img, nifti_save_filename)
         return 1
@@ -91,7 +93,7 @@ def convert_pet_nifti_to_suv_nifti(nifti_read_filename, test_dicom, nifti_save_f
         return 0
 
 
-def find_path_to_dicom_image_that_corresponds_with_rtsrtuct(dir_i, dicom_study_date, modality_of_interest, subdirs):
+def find_path_to_dicom_image_that_corresponds_with_rtsrtuct(dir_i, dicom_id, dicom_study_date, modality_of_interest, subdirs):
     #just looks one folder up to see if any directories contain DICOM images of the modality of interest. Takes first one
     one_folder_up = os.path.dirname(dir_i)
     patient_folders = [s for s in subdirs if one_folder_up in s]
@@ -102,14 +104,17 @@ def find_path_to_dicom_image_that_corresponds_with_rtsrtuct(dir_i, dicom_study_d
         if isdicom(os.path.join(dir_p, temp_file)) == False:
             continue
         test2_dicom = pydicom.dcmread(os.path.join(dir_p, temp_file))
-        if  test2_dicom['00080020'].value == dicom_study_date and test2_dicom['00080060'].value == modality_of_interest:
+        if  (test2_dicom['00080020'].value == dicom_study_date and
+                test2_dicom['00080060'].value == modality_of_interest and
+                test2_dicom['00100020'].value.lower() == dicom_id.lower()):
             corresponding_dicom = dir_p
     return corresponding_dicom
 
 
 
-def convert_all_files_to_nifti(top_dicom_folder, top_nifti_folder, modality_of_interest):
-    #modality of interest is the modality that will be the reference size for the RTSTRUCT contours
+def convert_all_files_to_nifti(top_dicom_folder, top_nifti_folder, modality_of_interest='PT'):
+    #modality of interest is the modality that will be the reference size for the RTSTRUCT contours, defined by DICOM
+    #type ('PT, 'CT', 'MR')
     subdirs = get_all_terminal_subfolders(top_dicom_folder)
 
     for dir_i in subdirs:
@@ -164,7 +169,10 @@ def convert_all_files_to_nifti(top_dicom_folder, top_nifti_folder, modality_of_i
                         scan_save_name = dicom_study_date + '_' + dicom_modality + '_' + dicom_series_description.replace(' ','_')
 
                         #find the corresponding DICOM series
-                        corresp_dicom_path = find_path_to_dicom_image_that_corresponds_with_rtsrtuct(dir_i , dicom_study_date,  modality_of_interest, subdirs)
+                        corresp_dicom_path = find_path_to_dicom_image_that_corresponds_with_rtsrtuct(dir_i ,dicom_id, dicom_study_date,  modality_of_interest, subdirs)
+                        if corresp_dicom_path == '':
+                            print('***!!! Unable to find correspoding DICOM images for %s. RTStruct will not be made ***!!'.format(subject_save_name))
+                            continue
                         #save
                         rtstruct_nifti_save_path = os.path.join(subject_save_folder, scan_save_name)
                         if not os.path.exists(rtstruct_nifti_save_path):
@@ -179,9 +187,18 @@ def convert_all_files_to_nifti(top_dicom_folder, top_nifti_folder, modality_of_i
 
 
 
-def convert_specific_rtstruct_to_nifti(top_dicom_folder, top_nifti_folder, rtstruct_sting_identifier, modality_of_interest):
+def convert_specific_rtstruct_to_nifti(top_dicom_folder, top_nifti_folder, rtstruct_string_identifier, modality_of_interest):
     # modality of interest is the modality that will be the reference size for the RTSTRUCT contours
     subdirs = get_all_terminal_subfolders(top_dicom_folder)
+
+    # ##For specific subjects
+    # subdirs2 = []
+    # pt_to_do = ['4672', '4744', '4754', '4780']
+    # for dir_i in subdirs:
+    #     for pt in pt_to_do:
+    #         if pt in dir_i:
+    #             subdirs2.append(dir_i)
+    # subdirs = subdirs2
 
     for dir_i in subdirs:
         files = os.listdir(dir_i)
@@ -205,21 +222,10 @@ def convert_specific_rtstruct_to_nifti(top_dicom_folder, top_nifti_folder, rtstr
         subject_save_folder = os.path.join(top_nifti_folder, subject_save_name)
         scan_save_name = dicom_series_date + '_' + dicom_modality + '_' + dicom_series_description.replace(' ', '_')
 
-
-
         if not os.path.exists(subject_save_folder):
             os.makedirs(subject_save_folder)
 
-        # if dicom_modality in ['CT', 'MR', 'NM']:
-        #     dicom2nifti.dicom_series_to_nifti(dir_i, os.path.join(subject_save_folder, scan_save_name + '.nii.gz'),
-        #                                       reorient_nifti=False)
-        # elif dicom_modality == 'PT':
-        #     dicom2nifti.dicom_series_to_nifti(dir_i, os.path.join(subject_save_folder, scan_save_name + '.nii.gz'),
-        #                                       reorient_nifti=False)
-        #     convert_pet_nifti_to_suv_nifti(os.path.join(subject_save_folder, scan_save_name + '.nii.gz'), test_dicom,
-        #                                    os.path.join(subject_save_folder, scan_save_name + '_SUV.nii.gz'))
-
-        if dicom_modality == 'RTSTRUCT' and rtstruct_sting_identifier.lower() in dicom_series_description.lower():
+        if dicom_modality == 'RTSTRUCT' and rtstruct_string_identifier.lower() in dicom_series_description.lower():
             print(dir_i)
             # might be multiple rtstructs in folder
             for file_i in files:
@@ -240,9 +246,13 @@ def convert_specific_rtstruct_to_nifti(top_dicom_folder, top_nifti_folder, rtstr
 
                         # find the corresponding DICOM series
                         corresp_dicom_path = find_path_to_dicom_image_that_corresponds_with_rtsrtuct(dir_i,
+                                                                                                     dicom_id,
                                                                                                      dicom_study_date,
                                                                                                      modality_of_interest,
                                                                                                      subdirs)
+                        if corresp_dicom_path == '':
+                            print('***!!! Unable to find correspoding DICOM images for %s. RTStruct will not be made ***!!'.format(subject_save_name))
+                            continue
                         # save
                         rtstruct_nifti_save_path = os.path.join(subject_save_folder, scan_save_name)
                         if not os.path.exists(rtstruct_nifti_save_path):
@@ -254,5 +264,14 @@ def convert_specific_rtstruct_to_nifti(top_dicom_folder, top_nifti_folder, rtstr
                             print("!!!!!!!!!!!XXXXXXX   Problem with {}    XXXXXX!!!!!!!!!!!!!! ".format(file_i))
 
 
-
-
+                        #check dimensions match
+                        roi_files = os.listdir(rtstruct_nifti_save_path)
+                        roi_file = os.path.join(rtstruct_nifti_save_path, roi_files[0])
+                        roi_nii = nib.load(roi_file)
+                        nii_dims = roi_nii.header.get_data_shape()
+                        dicom_files = os.listdir(corresp_dicom_path)
+                        dicom_file = os.path.join(corresp_dicom_path, dicom_files[0])
+                        dicom_info = pydicom.dcmread(dicom_file)
+                        rows = dicom_info['00280010'].value
+                        if rows != nii_dims[0] or len(dicom_files) != nii_dims[2]:
+                            print('!!!**** ROI nifti is not same shape as DICOM (maybe) for {}'.format(rtstruct_nifti_save_path))
