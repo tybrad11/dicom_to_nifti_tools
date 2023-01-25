@@ -64,7 +64,7 @@ convert_all_files_to_nifti.convert_all_files_to_nifti(dicom_path, nifti_path, 'P
 #resample the CTs to the PETs
 resample_CTs_in_patient_folders(nifti_path)
 
-#if you need to convert rtstructs for a specific annotator, use 'lee', 'mshin', or 'lee'
+#if you need to convert rtstructs for a specific annotator, use 'lee', 'mshin', or 'scho'
 convert_specific_rtstruct_to_nifti(dicom_path, nifti_path, 'lee', 'PT')
 
 #check which files were converted, save as csv
@@ -151,7 +151,7 @@ for annotator in annotators:
             roi_folder = all_folders[roi_ind[0]]
 
 
-        ignore_strings = ['Struct_XD', 'Reference', 'Burden', 'DS1']
+        ignore_strings = ['Struct_XD', 'Reference', 'Burden', 'DS1', 'Struct_YD']
         group_strings = ['marrow', 'osseous', 'liver', 'extra-nodal', 'spleen', 'lymph-nodes']  #equivocal is already one
         try:
             combine_rois_into_one(roi_folder, patient_dir, patient, ignore_strings, create_mip=True)
